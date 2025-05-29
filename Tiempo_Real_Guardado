@@ -1,134 +1,109 @@
-import numpy as np                               # Importa NumPy para trabajar con arrays numéricos
-import sounddevice as sd                         # Importa sounddevice para capturar audio del micrófono
-import matplotlib.pyplot as plt                  # Importa matplotlib para graficar las señales
-from matplotlib.animation import FuncAnimation   # Para animar las gráficas en tiempo real
-from matplotlib.widgets import Button            # Para agregar un botón a la ventana de la gráfica
-from scipy.io.wavfile import write               # Para guardar archivos WAV
-import datetime                                  # Para obtener la fecha y hora actual
+# === IMPORTACIONES ===
+import numpy as np
+import matplotlib.pyplot as plt
+import sounddevice as sd
+from matplotlib.widgets import Button
+from scipy.io.wavfile import write
+import os
+import matplotlib.animation as animation
 
-# === CONFIGURACIÓN INICIAL ===
-device_index = 1                            # Índice del dispositivo de audio
-samplerate = 16000                          # Frecuencia de muestreo: 16 kHz
-channels = 4                                # Número de micrófonos (canales)
-blocksize = 1024                            # Número de muestras por bloque de audio
-duration_buffer = 60                        # Duración máxima del buffer (en segundos)
-max_frames = samplerate * duration_buffer   # Máximo de frames a guardar
+# === FUNCIONES ===
 
-# === VARIABLES GLOBALES ===
-audio_buffer = []                           # Lista para almacenar los bloques de audio
-running = True                              # Bandera para controlar si la animación sigue
+def audio_callback(indata, frames, time, status): #Función que se llama automáticamente 
+    if status:                                    #con cada bloque de audio capturado
+        print("Estado:", status)
+    if running:
+        audio_buffer.append(indata.copy())
 
-# === PREPARAR FIGURA Y EJES DE LA GRÁFICA ===
-fig, axs = plt.subplots(5, 1, figsize=(10, 10))  # 4 canales + 1 suma, en subgráficas
-lines = []                                  # Lista para guardar las líneas de cada gráfico
-
-# Inicializa las líneas vacías para cada canal (y la suma)
-for ax in axs:
-    line, = ax.plot([], [], lw=1)           # Crea una línea vacía
-    lines.append(line)                      # La guarda
-    ax.set_xlim(0, blocksize / samplerate)  # Establece límite del eje X (tiempo)
-    ax.set_ylim(-2, 2)                  # Establece límite del eje Y (amplitud)
-    ax.set_xlabel("Tiempo [s]")             # Etiqueta del eje X
-    ax.set_ylabel("Amplitud")               # Etiqueta del eje Y
-
-# Títulos para cada gráfico
-axs[0].set_title("Micrófono 1")
-axs[1].set_title("Micrófono 2")
-axs[2].set_title("Micrófono 3")
-axs[3].set_title("Micrófono 4")
-
-# Configura el gráfico de la suma en el último eje (axs[4])
-axs[4].set_title("Suma de los 4")
-axs[4].set_xlabel("Tiempo [s]")
-axs[4].set_ylabel("Amplitud")
-axs[4].set_ylim(-1, 1)  # Establece un límite de amplitud para la suma
-
-# === FUNCIÓN PARA ACTUALIZAR LA GRÁFICA EN CADA CUADRO ===
 def update_plot(frame):
-    if not running:
+    """Actualiza la gráfica con el último bloque de audio."""
+    if not running or len(audio_buffer) == 0:
         return lines
 
-    if len(audio_buffer) == 0:
-        return lines  # No hay datos aún
-
-    # Toma solo el último bloque de audio
     latest_block = audio_buffer[-1]
 
-    # Crea eje de tiempo para el bloque
-    t = np.linspace(0, len(latest_block) / samplerate, len(latest_block))
-
-    # Actualiza las líneas de los 4 canales
-        # Crea ventana de Hann
-    window = np.hanning(len(latest_block))
-
-    # Señales ventaneadas y normalizadas
     for i in range(4):
-        windowed = latest_block[:, i] * window
+        lines[i].set_data(t, latest_block[:, i + 1])  # Micrófonos 1 a 4
 
-        # Normaliza para conservar amplitud visual (opcional pero útil al graficar)
-        max_val = np.max(np.abs(windowed))
-        if max_val > 0:
-            windowed /= max_val
+    lines[4].set_data(t, latest_block[:, 0])          # Suma en canal 0
 
-        lines[i].set_data(t, windowed)
-
-    # Suma de canales ventaneados
-    suma_windowed = np.sum(latest_block * window[:, np.newaxis], axis=1)
-    max_suma = np.max(np.abs(suma_windowed))
-    if max_suma > 0:
-        suma_windowed /= max_suma  # Normaliza la suma también
-
-    lines[4].set_data(t, suma_windowed)
     return lines
 
-# === FUNCIÓN PARA CAPTURAR AUDIO (SE LLAMA AUTOMÁTICAMENTE POR sounddevice) ===
-def audio_callback(indata, frames, time, status):
-    if status:
-        print("Status:", status)  # Muestra errores si los hay
-
-    if running:
-        audio_buffer.append(indata.copy())  # Guarda el bloque actual
-
-        # Limita la cantidad de bloques para evitar uso excesivo de memoria
-        if len(audio_buffer) * blocksize > max_frames:
-            audio_buffer.pop(0)
-
-# === INICIO DE CAPTURA DE AUDIO ===
-stream = sd.InputStream(
-    samplerate=samplerate,      # Frecuencia de muestreo
-    blocksize=blocksize,        # Tamaño del bloque
-    channels=channels,          # Número de canales
-    device=(device_index, None),# Dispositivo de entrada
-    callback=audio_callback     # Función que se llama en cada bloque
-)
-stream.start()  # Comienza a capturar
-
-# === ANIMACIÓN DE LAS GRÁFICAS ===
-ani = FuncAnimation(fig, update_plot, interval=50)  # Actualiza cada 50 ms
-
-plt.tight_layout()   # Ajusta los márgenes
-plt.show()           # Muestra la ventana (bloquea hasta que se cierre)
-
-# === FUNCIÓN PARA GUARDAR LOS ARCHIVOS WAV ===
-def guardar_audio():
+def guardar_audio(event):
+    """Función que guarda los archivos WAV al presionar el botón."""
+    global running
+    running = False
     print("Guardando audio...")
 
-    # Une todos los bloques en un solo array
-    full_audio = np.concatenate(audio_buffer, axis=0)
+    audio_data = np.concatenate(audio_buffer, axis=0)
+    audio_int16 = np.int16(audio_data * 32767)
 
-    # Obtiene la hora actual para el nombre del archivo
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    for i in range(4):
+        filepath = os.path.join(output_folder, f"mic_{i+1}.wav")        
+        write(filepath, samplerate, audio_int16[:, i + 1])          #Guarda lo de los canales
+        print(f"Guardado: {filepath}")
 
-    # Guarda cada canal por separado
-    for i in range(channels):
-        canal = full_audio[:, i]
-        filename = f"canal{i+1}_{timestamp}.wav"
-        write(filename, samplerate, (canal * 32767).astype(np.int16))  # Normaliza y guarda
+    suma_path = os.path.join(output_folder, "suma.wav")
+    write(suma_path, samplerate, audio_int16[:, 0])                 #Guarda lo de la suma
+    print(f"Guardado: {suma_path}")
 
-    # Guarda también la suma de todos
-    suma = np.sum(full_audio, axis=1)
-    suma = np.clip(suma / channels, -1, 1)  # Normaliza la suma
-    filename = f"suma_{timestamp}.wav"
-    write(filename, samplerate, (suma * 32767).astype(np.int16))  # Guarda la suma
 
-    print("¡Audio guardado!")
+# === VARIABLES GLOBALES Y CONFIGURACIÓN ===
+
+device_index = 7                     # Cambiar si es necesario
+samplerate = 16000
+channels = 6
+blocksize = 1024
+
+output_folder = r"C:\Users\leona\Documents\Proyecto\Códigos\Audios"
+os.makedirs(output_folder, exist_ok=True)
+
+audio_buffer = []
+running = True
+t = np.linspace(0, blocksize / samplerate, blocksize)
+
+# === FUNCIÓN PRINCIPAL ===
+
+def main():
+    global lines
+
+    # Crear figura y subgráficas
+    fig, axs = plt.subplots(5, 1, figsize=(10, 10))
+    lines = []
+
+    for i in range(4):
+        axs[i].set_title(f"Micrófono {i+1}")
+        axs[i].set_ylim(-2, 2)
+        axs[i].set_xlim(0, blocksize / samplerate)
+        line, = axs[i].plot([], [])
+        lines.append(line)
+
+    axs[4].set_title("Suma de las señales")
+    axs[4].set_ylim(-2, 2)
+    axs[4].set_xlim(0, blocksize / samplerate)
+    line_suma, = axs[4].plot([], [])
+    lines.append(line_suma)
+
+    plt.tight_layout()
+
+    # Botón de guardado
+    button_ax = plt.axes([0.8, 0.01, 0.1, 0.05])
+    button = Button(button_ax, "Guardar Audio")
+    button.on_clicked(guardar_audio)
+
+    # Iniciar captura y visualización
+    with sd.InputStream(callback=audio_callback,
+                        channels=channels,
+                        samplerate=samplerate,
+                        blocksize=blocksize,
+                        dtype='float32',
+                        device=(device_index, None)):
+        
+        ani = animation.FuncAnimation(fig, update_plot, interval=50)
+        plt.show()
+
+    print("Finalizado.")
+
+# === BLOQUE PROTECTOR ===
+if __name__ == "__main__":
+    main()
