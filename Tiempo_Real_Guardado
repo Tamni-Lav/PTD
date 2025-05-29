@@ -1,3 +1,5 @@
+#Fecha de última modificación: 29/05/2025
+
 # === IMPORTACIONES ===
 import numpy as np
 import matplotlib.pyplot as plt

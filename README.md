@@ -16,7 +16,9 @@ que representa una mezcla acústica de todos ellos. Esto puede usarse para evalu
 ## 🛠️ Requisitos de software
 
 1. Python 3.13
-2. Instalar los paquetes necesarios con:
+2. Modificar dirección de guardado:
+    Tiempo_Real_Guardado-----Línea 60
+3. Instalar los paquetes necesarios con:
 
 ```bash
 pip install -r requirements.txt
