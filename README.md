@@ -16,9 +16,12 @@ que representa una mezcla acústica de todos ellos. Esto puede usarse para evalu
 ## 🛠️ Requisitos de software
 
 1. Python 3.13
-2. Modificar dirección de guardado:
+2. Modificar dirección de guardado
+```bash
     Tiempo_Real_Guardado-----Línea 60
+```
 3. Instalar los paquetes necesarios con:
 
 ```bash
 pip install -r requirements.txt
+```
